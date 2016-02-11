@@ -227,3 +227,20 @@ filter(result.plot, grepl("trap", method), !grepl("vc|hap|SKAT|lm.only|trap.only
   theme_gray(base_size = 20) +
   theme(legend.position="bottom", panel.background = element_rect(fill = 'grey85')) +
   scale_color_manual(values=cbbPalette)
+
+
+#all
+pd <- position_dodge(0.0)
+filter(result.plot, grepl("trap", method), !grepl("vc|hap|prop", method)) %>% ggplot(aes(x=r, y=power, ymax=max(power), group=method, col=method)) +
+  #   geom_point(size=3, alpha=1) +
+  facet_grid(family_strct~risk.haplo.f, scale="free_x", labeller = label_both) +
+  geom_line(size=1.2, alpha=0.7, position=pd) +
+  geom_point(size=1.2, position=pd) +
+#   ggtitle("f=0.202, consider effect size of risk haplotypes, TRAP") +
+#   ggtitle("f=0.0178, consider effect size of risk haplotypes, TRAP") +
+#   ggtitle("f=0.0039, consider effect size of risk haplotypes, TRAP") +
+  labs(x="relative risk r") +
+  scale_y_continuous(limits=c(0,1)) +
+  theme_gray(base_size = 20) +
+  theme(legend.position="bottom", panel.background = element_rect(fill = 'grey85')) +
+  scale_color_manual(values=cbbPalette)

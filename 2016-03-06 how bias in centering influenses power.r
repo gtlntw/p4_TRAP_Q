@@ -241,21 +241,24 @@ cbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2",
 cbbPalette <- c("#000000", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
 #check power using true, imputed founder carrier, minimum offspring carrier
 #three versions -- command and rare and super rare #2 for common, 7 for rare, 39 for super rare
-result <- read.csv("2016-01-14 why inflated type I error and bias in center matters.csv", header=T)
-result <- result %>% gather(key="method", value="p.value", 10:20)
-result.plot <- result %>% group_by(family_strct, trait_mean, f, risk.haplo.f, r, method) %>% 
+result <- read.csv("2016-03-06 how bias in centering influenses power.csv", header=T)
+result <- result %>% gather(key="method", value="p.value", -c(1:9))
+result.plot <- result %>% group_by(family_strct, trait_mean, dis_cutoff,f, risk.haplo.f, r, method) %>% 
   summarise(n=n(), power=mean(p.value<0.05, na.rm=T))
-# result.plot$risk.haplo.f <- factor(result.plot$risk.haplo.f, labels=c("f=0.01","f=0.05","f=0.20"))
-result.plot$family_strct <- factor(result.plot$family_strct, labels=c("2g.2a.2u","non-ascertained"))
-levels(result.plot$method) <- c("trap.haplo", "trap.ind",  "trap.haplo.founder.prop", "trap.ind.founder.prop",    
-		"trap.haplo.founder.lm", "result.trap.ind.founder.lm", "pedgene.vc", "pedgene.burden", "fbskat.vc",         
-		"fbskat.burden", "pop")
+result.plot$dis_cutoff[which(is.na(result.plot$dis_cutoff))] <- "NA"
+result.plot$dis_cutoff <- factor(result.plot$dis_cutoff, labels=c("2g.2a.2u","non-ascertained"))
+result.plot <- mutate(result.plot, centered=grepl("center", method))
+result.plot$method <- factor(result.plot$method)
+levels(result.plot$method) <- c("pedgene.burden", "pedgene.burden",  "pedgene.vc", "pedgene.vc",    
+		"pop", "pop", "trap", "trap",         
+		"trap.rank", "trap.rank")
+
 
 #only trap test
 pd <- position_dodge(0.0)
-filter(result.plot, trait_mean==0, grepl("trap", method), !grepl("vc|hap", method)) %>% ggplot(aes(x=r, y=power, ymax=max(power), group=method, col=method)) +
+filter(result.plot, !grepl("vc|hap", method)) %>% ggplot(aes(x=r, y=power, ymax=max(power), group=method, col=method)) +
   #   geom_point(size=3, alpha=1) +
-  facet_grid(family_strct~risk.haplo.f*trait_mean, scale="free_x", labeller = label_both) +
+  facet_grid(dis_cutoff~trait_mean*centered, scale="free_x", labeller = label_both) +
   geom_line(size=1.2, alpha=0.7, position=pd) +
   geom_point(size=1.2, position=pd) +
 #   ggtitle("f=0.202, consider effect size of risk haplotypes, TRAP") +

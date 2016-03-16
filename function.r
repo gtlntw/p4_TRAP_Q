@@ -66,7 +66,11 @@ gene_family_pe <- function(family_strct=family_strct_ped, n_family= 1000, trait_
   #the strategy is generate the whole family and check affected status if fail then restart from the first individual
   data_family.idx <- 1 #index of the current family member being generated
   n_family.idx <- 1 #index of how many families have been generated
-  if(dis_cutoff == "NA") {dis_cutoff <- NA}
+  if(dis_cutoff == "NA") {
+  	dis_cutoff <- NA
+  	affect_spec <- rep(-1,n_family_member)
+  	exact_affected <- F
+  }
   
   #generate exact affected members or just the total number of affected
   if(exact_affected == T) {
@@ -142,8 +146,9 @@ if(FALSE) {
   n_family=1000
   family_strct = "2g.2a.2u" #"2g.2a.2u" "2g.2f.2c" "3g.3a.4u"
   trait_mean=100
-  r=0
-  dis_cutoff = 2.33 #"NA" qnorm(0.01, lower=F)
+  r=1
+  dis_cutoff = "NA" #"NA" qnorm(0.01, lower=F)
+  exact_affected=F
 }
 
 #convernt family data from haploid to diploid format
@@ -203,6 +208,7 @@ family.test <- function(data=family_generated, f=risk.variant.id, nofounderpheno
   	"2" = function(tran_vec, carrier, affect) {sum((tran_vec[, c("h1","h2")] %in% carrier)*2-1)*(affect)}, #both affected and unaffected by halotype
   	"3" = function(tran_vec, carrier, affect) {(any(tran_vec[, c("h1","h2")] %in% carrier)*2-1)*(affect)}, #both affected and unaffected by individual
   	"4" = function(tran_vec, carrier, affect) {(any(tran_vec[, c("h1","h2")] %in% carrier)*2)*(affect)} #both affected and unaffected by individual with 2,0 coding for carrier
+  	
   )
   
   #start looking at each family
@@ -343,7 +349,7 @@ family.test <- function(data=family_generated, f=risk.variant.id, nofounderpheno
 # family.test()
 
 ##rank_based family test trap
-family.rank.test <- function(data=family_generated, f=risk.variant.id, nofounderphenotype=F, summary.stat="3") {
+family.rank.test <- function(data=family_generated, f=risk.variant.id, nofounderphenotype=F) {
   ##hypothesis testing count the number of carrier haplotypes transmitted to the offsprings
   n_family <- max(data$data_family$family)
   n_family_member <- table(data$data_family$family)
@@ -353,16 +359,39 @@ family.rank.test <- function(data=family_generated, f=risk.variant.id, nofounder
   } else(snp2look.idx <-  f)
   
   n_carrier_family <- vector("integer", n_family) #number of carrier founder haplotype in each family
-
-  summary.stat <- switch (summary.stat,
-  	"1" = function(tran_vec, carrier, affect) {sum(tran_vec[, c("h1","h2")] %in% carrier)*(affect-1)}, #only affected
-  	"2" = function(tran_vec, carrier, affect) {sum((tran_vec[, c("h1","h2")] %in% carrier)*2-1)*(affect)}, #both affected and unaffected by halotype
-  	"3" = function(tran_vec, carrier, affect) {(any(tran_vec[, c("h1","h2")] %in% carrier)*2-1)*(affect)}, #both affected and unaffected by individual
-  	"4" = function(tran_vec, carrier, affect) {(any(tran_vec[, c("h1","h2")] %in% carrier)*2)*(affect)} #both affected and unaffected by individual with 2,0 coding for carrier
-  )
   
+  rank_sum <- function(x,y){
+		n_g1 <- length(x)
+		n_g2 <- length(y)
+		U_sum <- n_g1*n_g2
+		U1 <- sum(sapply(x, function(z) sum(z>y, 0.5*(z==y))))
+		U2 <- U_sum -U1
+		U <- U1
+		U_std <- U1/U_sum
+		list(U=U,U_std=U_std)
+  }
+  
+  summary.stat <- function(tran_vec, carrier, affect) {
+  	IBD_haplotype_observed = list()
+  	for(i in start.idx:n_family_member[family.idx]) {
+  		#print(c(sum(tran_vec[current_row+i, c("h1","h2")] %in% carrier),(affect[current_row+i]-1)))
+  		IBD_haplotype_observed[[i]] <- data.frame(carrier=(tran_vec[i, c("h1","h2")] %in% carrier), affect=affect[i]) 
+  	}
+  	observed <- do.call(rbind, IBD_haplotype_observed)
+  	
+  	carrier.idx <- which(observed$carrier==T)
+  	carrier_trait <- observed$affect[carrier.idx]
+  	non_carrier.idx <- which(observed$carrier==F)
+  	non_carrier_trait <- observed$affect[non_carrier.idx]
+  	
+  	if(any(length(carrier.idx)==0, length(non_carrier.idx)==0)) return(NA)
+  	rank_sum(carrier_trait, non_carrier_trait)$U_std
+  }
+
   #start looking at each family
-  test.stat <- sapply(1:n_family, function(x) {
+  T_list <- list()
+  test_stat <- list()
+  for(x in 1:n_family) {
     family.idx=x 
 #     print(family.idx)
     current_row=sum(n_family_member[1:family.idx]) - n_family_member[family.idx]
@@ -405,47 +434,62 @@ family.rank.test <- function(data=family_generated, f=risk.variant.id, nofounder
 #       ,ifelse(sum(h1[2, snp2look.idx]==1)>0, tran_vec[2, "h1"], NA) #check second founder's h1
 #       ,ifelse(sum(h2[2, snp2look.idx]==1)>0, tran_vec[2, "h2"], NA) #check second founder's h2
 #     )
-    n_carrier_family[family.idx] <<- n_carrier <- sum(!is.na(carrier)) #no. of carrier haplotypes
+    n_carrier_family[family.idx] <- n_carrier <- sum(!is.na(carrier)) #no. of carrier haplotypes
     
     start.idx <- ifelse(nofounderphenotype==F, 1, 3)
     criteria <- !(n_carrier==(2*n_founder) | n_carrier==0)
 
     if(criteria) { #skip families with 0 or 4 carrier haplotypes in founders or no carrier in children for conditonal test
-      IBD_haplotype_observed = 0
-      for(i in start.idx:n_family_member[family.idx]) {
-        #print(c(sum(tran_vec[current_row+i, c("h1","h2")] %in% carrier),(affect[current_row+i]-1)))
-          IBD_haplotype_observed <- IBD_haplotype_observed + summary.stat(tran_vec[i, ], carrier, affect[i]) 
-      }
-      observed <- IBD_haplotype_observed
+      observed <- summary.stat(tran_vec, carrier, affect)
       
       #calculate expectation and variance
       founder <- t(combn(LETTERS[1:(2*n_founder)], n_carrier))
       S <- apply(founder, 1, function(x) {
-        carrier <- x #founder's haplotype
-        #       print(carrier)
-        IBD_haplotype_observed = 0
-        for(i in start.idx:n_family_member[family.idx]) {
-          #print(c(sum(tran_vec[current_row+i, c("h1","h2")] %in% carrier),(affect[current_row+i]-1)))
-          IBD_haplotype_observed <- IBD_haplotype_observed + summary.stat(tran_vec[i, ], carrier, affect[i])
-        }
-        IBD_haplotype_observed
-      }
-      )
-      median_S <- median(S)
-      c(observed=observed, median=median_S, n_carrier=n_carrier, family.idx=family.idx)
+				summary.stat(tran_vec, x, affect)
+      })
+      rank_S <- rank(S)
+      rank_observed <- rank_S[match(observed, S)]
+      T_list[[family.idx]] <- S 
+      test_stat[[family.idx]] <- data.frame(observed=observed, rank_observed=rank_observed, n_carrier=n_carrier, family.idx=family.idx, min_S=min(S), max_S=max(S), min_rank=min(rank_S), max_rank=max(rank_S))
     }
-  })  
+  } 
   
-  test.stat <- data.frame(do.call(rbind, test.stat))
-  carrier.family.idx <- test.stat$family.idx
+  T.comb <- T_list[!sapply(T_list, is.null)]
+  T.comb <- lapply(T.comb, function(x) x[!is.na(x)])
+  test.stat.table <- data.frame(do.call(rbind, test_stat))
+  n_info_family <- length(test.stat.table$family.idx)
   
-  n_gr_median <- sum(test.stat$observed > test.stat$median)
-  #what to do with tie with median
-  #if the proportion of the informative family that has the observed greater than its median is greater than 0.5
-  p.value <- pbinom(q = n_gr_median, size = length(carrier.family.idx), prob = 0.5, lower=F) #p-value
-
-
-  list(n_gr_median=n_gr_median, p.value=p.value, n_info_family=length(carrier.family.idx))
+  final.test.stat <- sum(test.stat.table$observed)
+  sum_min_S <- sum(test.stat.table$min_S)
+  sum_max_S <- sum(test.stat.table$max_S)
+  null.dist <- replicate(100000, {
+  	sum(sapply(T.comb, function(x) sample(x,1)))
+  })
+  p.value <- mean(min(final.test.stat, sum_max_S-final.test.stat+sum_min_S) >= null.dist) +
+  	mean(max(final.test.stat, sum_max_S-final.test.stat+sum_min_S) <= null.dist)
+  
+  final.test.stat.rank <- sum(test.stat.table$rank_observed)
+  # max_rank_table <- table(test.stat.table$max_rank)
+  sum_min_rank <- sum(test.stat.table$min_rank)
+  sum_max_rank <- sum(test.stat.table$max_rank)
+#   nrow_comb <- nrow(max_rank_table)
+#   max_rank_count <- names(max_rank_table)
+#   null.dist.rank <- x <- replicate(100000, {
+#   	temp <- list()
+#   	for(i in 1:nrow_comb) {
+#   		temp[[i]] <- sum(sample(1:max_rank_count[i], max_rank_table[i], replace = T))
+#   	}
+#   	unlist(temp)
+#   })
+  
+  T.comb.rank <- lapply(T.comb, function(x) sort(rank(x)))
+  null.dist.rank <- replicate(100000, {
+  	sum(sapply(T.comb.rank, function(x) sample(x,1)))
+  })
+  p.value.rank <- mean(min(final.test.stat.rank, sum_max_rank-final.test.stat.rank+sum_min_rank) >= null.dist.rank) +
+  	mean(max(final.test.stat.rank, sum_max_rank-final.test.stat.rank+sum_min_rank) <= null.dist.rank)
+  
+  list(final.test.stat=final.test.stat, p.value=p.value, final.test.stat.rank=final.test.stat.rank, p.value.rank=p.value.rank, n_info_family=n_info_family)
 }
 # family.rank.test()
 

@@ -489,9 +489,128 @@ family.rank.test <- function(data=family_generated, f=risk.variant.id, nofounder
   p.value.rank <- mean(min(final.test.stat.rank, sum_max_rank-final.test.stat.rank+sum_min_rank) >= null.dist.rank) +
   	mean(max(final.test.stat.rank, sum_max_rank-final.test.stat.rank+sum_min_rank) <= null.dist.rank)
   
-  list(final.test.stat=final.test.stat, p.value=p.value, final.test.stat.rank=final.test.stat.rank, p.value.rank=p.value.rank, n_info_family=n_info_family)
+  list(final.test.stat=final.test.stat, p.value=p.value, final.test.stat.rank=final.test.stat.rank, p.value.rank=p.value.rank, n_info_family=n_info_family, info_family=test.stat.table$family.idx)
 }
 # family.rank.test()
+
+#exact p-value calculation
+exact.permutation <- function(t.obs=0, t.current=0, level=0, assignment=0, prune=T) {
+  # print(paste("level=",level))
+  #add the function call
+  count.call <<- count.call + 1
+  #initialize the calculation
+ 	if(level==0 & assignment==0) {
+		t.current <- 0
+	} else{
+		t.current <- t.current + t.info.family[[level]][assignment]
+	}
+  #check if at the tip and as extreme or more extreme than t.obs
+  if(level==length(t.info.family) & t.current >= t.obs) {
+		return(1/n.permutation)
+  } else if(level==n_info_family & t.current < t.obs) {
+	  return(0)
+	}
+	t.max <- t.current + (n_info_family-level)*4 #max in this branch sum the max in the remaining levels
+	t.min <- t.current + (n_info_family-level)*1
+	# print(paste(level, assignment, t.current, t.max, t.min))
+	#prune the branch to speed up
+	if(prune==T) {
+	  #if min is greater than t.obs all the descendant counted as hits
+  	if(t.min >= t.obs) {
+  		return(4^(n_info_family-level)/n.permutation)
+  	}
+  	#if max is smaller than t.obs, discard this branch
+  	if(t.max < t.obs) {
+  		return(0)
+  	} 
+	}
+	#descend
+	p1 <- exact.permutation(t.obs=t.obs, t.current=t.current, level=level+1, assignment=1, prune=prune)
+	p2 <- exact.permutation(t.obs=t.obs, t.current=t.current, level=level+1, assignment=2, prune=prune)
+	p3 <- exact.permutation(t.obs=t.obs, t.current=t.current, level=level+1, assignment=3, prune=prune)
+	p4 <- exact.permutation(t.obs=t.obs, t.current=t.current, level=level+1, assignment=4, prune=prune)
+	p.value <- (p1+p2+p3+p4)
+	return(p.value)
+}
+
+exact.pvalue <- function(t.stat, prune=T) {
+  n.permutation <<- 4^length(t.info.family)
+  n_info_family <<- length(t.info.family)
+  
+  count.call <<- 0
+  result <- exact.permutation(t.obs=t.stat, prune=prune)
+  number.function.calls <- count.call
+  
+  list(p.value=result, number.function.calls=number.function.calls)
+}
+
+compare_result <- function(n_info_family, t.stat) {
+  n_info_family <- n_info_family
+  t.stat=3.5*n_info_family
+  t.info.family <<- rep(list(1:4), n_info_family) #place to save t at each level
+  n.permutation <<- 4^length(t.info.family)
+  n_info_family <<- length(t.info.family)
+  
+  result <- list()
+  time <- list() 
+  time[["result"]] <- system.time(result[["result"]] <- unlist(exact.pvalue(t.stat=t.stat, prune=F)))
+  time[["result.prune"]] <- system.time(result[["result.prune"]] <- unlist(exact.pvalue(t.stat=t.stat, prune=T)))
+  
+  time[["result.c"]] <- system.time(result[["result.c"]] <- unlist(exact_pvalue_c(t=t.info.family,t_stat=t.stat,prune=F)))
+  time[["result.prune.c"]] <- system.time(result[["result.prune.c"]] <- unlist(exact_pvalue_c(t=t.info.family,t_stat=t.stat,prune=T)))
+  list(result=result, time=time)
+}
+# compare_result(n_info_family=5, t.stat=2.5*n_info_family)
+
+exact.permutation.collapse <- function(t.obs=0, t.current=0, level=0, assignment=0, n_assigned=0, prune=T) {
+  #add the function call
+  count.call <<- count.call + 1
+  #initialize the calculation
+ 	if(level==0 & assignment==0) {
+		t.current <- 0
+	} else{
+		t.current <- t.current + level*assignment
+		n_assigned <- n_assigned + assignment
+	}
+  # if(level==4) print(paste("level=",level, " t.current=", t.current))
+  #check if at the tip and as extreme or more extreme than t.obs
+  if(level==4 & t.current >= t.obs) {
+		return(1/n.permutation)
+  } else if(level==4 & t.current < t.obs) {
+	  return(0)
+	}
+	t.max <- t.current + (n_info_family-n_assigned)*4 #max in this branch sum the max in the remaining levels
+	t.min <- t.current + (n_info_family-n_assigned)*(level+1)
+	# print(paste(level, assignment, n_assigned, t.current, t.max, t.min))
+	#prune the branch to speed up
+	if(prune==T) {
+	  #if min is greater than t.obs all the descendant counted as hits
+  	# if(t.min >= t.obs) {
+  	# 	return(4^(n_info_family-level)/n.permutation) #multiply by combination factor
+  	# }
+  	#if max is smaller than t.obs, discard this branch
+  	if(t.max < t.obs) {
+  		return(0)
+  	} 
+	}
+	#descend
+	p.value <- 0
+	if(level==3) { #only consider the possible assignment in the 4th level if at level 3
+	  p.value <- p.value + exact.permutation.collapse(t.obs=t.obs, t.current=t.current, level=level+1, assignment=(n_info_family-n_assigned), n_assigned=n_assigned, prune=prune) 
+	} else{
+  	for(i in 0:(n_info_family-n_assigned)) {
+  	  p.value <- p.value + exact.permutation.collapse(t.obs=t.obs, t.current=t.current, level=level+1, assignment=i, n_assigned=n_assigned, prune=prune)*choose(n_info_family-n_assigned, i)  #multiply by combination factor
+  	}
+	}  
+	return(p.value)
+}
+count.call <<-0
+n_info_family <- 50
+t.stat=2.5*n_info_family
+t.info.family <<- rep(list(1:4), n_info_family) #place to save t at each level
+n.permutation <<- 4^length(t.info.family)
+exact.permutation.collapse(t.obs=t.stat)
+
 
 ##generate population sample
 gene_case_control <- function(n_case_control_pair=1000, n_case=NA, n_control=NA) {

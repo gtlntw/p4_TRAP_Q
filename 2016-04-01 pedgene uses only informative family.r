@@ -1,5 +1,5 @@
 ## ... your simualtion codek
-source("/net/frodo/home/khlin/p4/function.r")
+source("/net/frodo/home/khlin/p4_0/function.r")
 
 #need to take in parameter
 ## passed in from the command prompt.
@@ -219,7 +219,7 @@ cbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2",
 cbbPalette <- c("#000000", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
 #check power using true, imputed founder carrier, minimum offspring carrier
 #three versions -- command and rare and super rare #2 for common, 7 for rare, 39 for super rare
-result <- read.csv("2016-03-18 new rank_based summary statistics.csv", header=T)
+result <- read.csv("2016-04-01 pedgene uses only informative family.csv", header=T)
 result <- result %>% gather(key="method", value="p.value", -c(1:10))
 result.plot <- result %>% group_by(family_strct, trait_mean, dis_cutoff,f, risk.haplo.f, r, method) %>% 
   summarise(n=n(), power=mean(p.value<0.05, na.rm=T))
@@ -227,10 +227,8 @@ result.plot$dis_cutoff[which(is.na(result.plot$dis_cutoff))] <- "NA"
 result.plot$dis_cutoff <- factor(result.plot$dis_cutoff, labels=c("2g.2a.2u","non-ascertained"))
 result.plot <- mutate(result.plot, centered=grepl("center", method))
 result.plot$method <- factor(result.plot$method)
-levels(result.plot$method) <- c("pedgene.burden","pedgene.burden", "pedgene.vc","pedgene.vc",    
-		"pop","pop", "trap","trap",         
-		"trap_new","trap_new", "trap_new_rank","trap_new_rank")
-
+levels(result.plot$method) <- c("pedgene.burden","pedgene.burden_info_family", "pedgene.vc","pedgene.vc_info_family",    
+		"pop", "trap","trap_new","trap_new_rank")
 
 #only trap test
 pd <- position_dodge(0.0)

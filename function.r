@@ -52,7 +52,7 @@ select_family_strct <- function(family_strct) {
 #this generate the whole family first and then keep only those matched input
 ##consider polygenic effect when generating family data
 ##3. simulate data using the new model
-gene_family_pe <- function(family_strct=family_strct_ped, n_family= 1000, trait_mean=0, Beta=Beta, dis_cutoff=NA, exact_affected=F) {
+gene_family_pe <- function(family_strct=family_strct_ped, n_family= 1000, trait_mean=0, Beta=Beta, dis_cutoff=NA, exact_affected=F, env_var=0) {
 	library(kinship2) #load kinship function to calculate kinship matrix
 	#get genotype matrix
 	n_haplo <- nrow(haplotype)
@@ -81,13 +81,14 @@ gene_family_pe <- function(family_strct=family_strct_ped, n_family= 1000, trait_
   
   
   ##parameters to generate phenotype
-  pe_var <- 0.5 #p*(1-p)/(exp(2*p)/(exp(p)+1)^4) to achieve 50% heritability
-	e_var <- 0.5 
+  pe_var <- .5 #p*(1-p)/(exp(2*p)/(exp(p)+1)^4) to achieve 50% heritability
+	e_var <- .5 
   beta0 <- trait_mean
   K <- kinship(with(family_strct, pedigree(person, father, mother, sex)))
 	PE <- 2*K*pe_var #polygenic effect
 	E <- diag(nrow(K))*e_var
 	PE_E <- PE + E
+
 
   while(n_family.idx <= n_family) {
     disease_vec <- matrix(NA, nrow=n_family_member, ncol=1) #store generated affected status
@@ -103,13 +104,16 @@ gene_family_pe <- function(family_strct=family_strct_ped, n_family= 1000, trait_
     	ind.idx <- ind.idx + 1
     }
 		#save haplotype effect
-    family.haplo.effect <- apply(family.haplo, 1, function(x) haplotype.effect[x[1]] + haplotype.effect[x[2]])
+    family.haplo.effect <- apply(family.haplo, 1, function(x) haplotype.effect[x[1]]+haplotype.effect[x[2]])
     
     #generate phenotype
-    mu <- beta0 + family.haplo.effect
+    #family-specific environment effect
+    beta_env <- rnorm(1, sd = sqrt(env_var))
+    mu <- beta0 + beta_env + family.haplo.effect
 		trait <- MASS::mvrnorm(1, mu=mu, Sigma=PE_E)
 		dis_status <- (trait > dis_cutoff + trait_mean) + 0
 		(n_affect <- sum(dis_status))
+		# trait <- exp(trait) #log-normal distribution
 		
 		if(eval(criteria) | all(affect_spec==-1)) {
 	    #save the haplotype file
@@ -144,9 +148,9 @@ if(FALSE) {
   f=0.01
   seed=1000
   n_family=1000
-  family_strct = "2g.2f.2c" #"2g.2a.2u" "2g.2f.2c" "3g.3a.4u"
+  family_strct = "2g.2a.2u" #"2g.2a.2u" "2g.2f.2c" "3g.3a.4u"
   trait_mean=0
-  r=0.3
+  r=0.5
   dis_cutoff = "NA" #"NA" qnorm(0.01, lower=F)
   exact_affected=F
 }
@@ -207,8 +211,8 @@ family.test <- function(data=family_generated, f=risk.variant.id, nofounderpheno
   	"1" = function(tran_vec, carrier, affect) {sum(tran_vec[, c("h1","h2")] %in% carrier)*(affect-1)}, #only affected
   	"2" = function(tran_vec, carrier, affect) {sum((tran_vec[, c("h1","h2")] %in% carrier)*2-1)*(affect)}, #both affected and unaffected by halotype
   	"3" = function(tran_vec, carrier, affect) {(any(tran_vec[, c("h1","h2")] %in% carrier)*2-1)*(affect)}, #both affected and unaffected by individual
-  	"4" = function(tran_vec, carrier, affect) {(any(tran_vec[, c("h1","h2")] %in% carrier)*2)*(affect)} #both affected and unaffected by individual with 2,0 coding for carrier
-  	
+  	"4" = function(tran_vec, carrier, affect) {(any(tran_vec[, c("h1","h2")] %in% carrier)*2)*(affect)}, #both affected and unaffected by individual with 2,0 coding for carrier
+  	"5" = function(tran_vec, carrier, affect) {(sum(tran_vec[, c("h1","h2")] %in% carrier))*(affect)}, #both affected and unaffected by individual with  genotype
   )
   
   if(lm.test==T) {nofounderphenotype <- T}
@@ -295,7 +299,10 @@ family.test <- function(data=family_generated, f=risk.variant.id, nofounderpheno
   v <- test.stat$var
   se <- sqrt(sum(v))
   #e_avg <- mean(e) #overall expectation
-  final.test.stat <- sum(test.stat$observed - test.stat$mean)/se
+  #sum then standardize
+  final.test.stat <- sum((test.stat$observed - test.stat$mean))/se
+  #standardize first then sum
+  # final.test.stat <- sum((test.stat$observed - test.stat$mean)/sqrt(v))/sqrt(length(v))
   
   #c(t, n_test.data)#T and number of informative families
   p.value <- 2*pnorm(abs(final.test.stat), lower=F) #p-value
@@ -350,6 +357,270 @@ family.test <- function(data=family_generated, f=risk.variant.id, nofounderpheno
   list(final.test.stat=final.test.stat, sum_e=sum(test.stat$mean), se=se, mean_observed=mean(test.stat$observed), mean_mean=mean(test.stat$mean), mean_var=mean(test.stat$var), p.value=p.value, n_info_family=length(test.stat$n_carrier), info_family=test.stat$family.idx)
 }
 # family.test()
+
+family.score.test <- function(data=family_generated, f=risk.variant.id, nofounderphenotype=F, summary.stat="5", lm.test=F, lm.offspring=F, within_center=F) {
+  ##hypothesis testing count the number of carrier haplotypes transmitted to the offsprings
+  n_family <- max(data$data_family$family)
+  n_family_member <- table(data$data_family$family)
+  #check if founder's haplotype carries any variant's with f < 0.1
+  if(length(f)==1 & f[1] <1) { #support allele frequency or list of snps
+    snp2look.idx <-  which(snp$FREQ1 < f) # snp to look for
+  } else(snp2look.idx <-  f)
+  
+  #center the trait
+  affect_all_mean <- mean(data$data_family$affect)
+  
+  n_carrier_family <- vector("integer", n_family) #number of carrier founder haplotype in each family
+
+  summary.stat <- switch (summary.stat,
+  	"1" = function(tran_vec, carrier, affect) {sum(tran_vec[, c("h1","h2")] %in% carrier)*(affect-1)}, #only affected
+  	"2" = function(tran_vec, carrier, affect) {sum((tran_vec[, c("h1","h2")] %in% carrier)*2-1)*(affect)}, #both affected and unaffected by halotype
+  	"3" = function(tran_vec, carrier, affect) {(any(tran_vec[, c("h1","h2")] %in% carrier)*2-1)*(affect)}, #both affected and unaffected by individual
+  	"4" = function(tran_vec, carrier, affect) {(any(tran_vec[, c("h1","h2")] %in% carrier)*2)*(affect)}, #both affected and unaffected by individual with 2,0 coding for carrier
+  	"5" = function(tran_vec, carrier, affect) {(sum(tran_vec[, c("h1","h2")] %in% carrier))*(affect)}, #both affected and unaffected by individual with  genotype
+  )
+  
+  expectation <- function(tran_vec, n_founder, founder_carrier){
+    n_carrier <- length(founder_carrier)
+    
+    founder_carrier_null <- t(combn(LETTERS[1:(2*n_founder)], n_carrier))
+    S <- apply(founder_carrier_null, 1, function(x) {
+      carrier <- x #founder's haplotype
+      #number of carrier haplotype
+      sum(tran_vec[, c("h1","h2")] %in% carrier)
+      }
+    )
+    mean(S)
+  }
+  
+  var_cov <- function(tran_vec_1, tran_vec_2, n_founder, founder_carrier) {
+    n_carrier <- length(founder_carrier)
+    
+    exp_1 <- expectation(tran_vec_1, n_founder, founder_carrier)
+    exp_2 <- expectation(tran_vec_2, n_founder, founder_carrier)
+
+    #calculate variance/covariance
+    founder_carrier_null <- t(combn(LETTERS[1:(2*n_founder)], n_carrier))
+    S <- apply(founder_carrier_null, 1, function(x) {
+      carrier <- x #founder's haplotype
+      observed_1 <- sum(tran_vec_1[, c("h1","h2")] %in% carrier)
+      observed_2 <- sum(tran_vec_2[, c("h1","h2")] %in% carrier)
+      #number of carrier haplotype
+      (observed_1-exp_1)*(observed_2-exp_2)
+      }
+    )
+    # print(S)
+    mean(S)
+  } 
+  
+  if(lm.test==T) {nofounderphenotype <- T}
+  
+  #start looking at each family
+  test.stat <- list()
+  family_mean_affect <- list()
+  for(x in 1:n_family) {
+    family.idx=x 
+#     print(family.idx)
+    current_row=sum(n_family_member[1:family.idx]) - n_family_member[family.idx]
+    h1 <- data$data_family[(current_row+1):(current_row+n_family_member[family.idx]),7:(6+n_snp)]
+    h2 <- data$data_family[(current_row+1):(current_row+n_family_member[family.idx]),-c(1:(6+n_snp))]
+    #adjust here for more founders
+    affect <- data$data_family[(current_row+1):(current_row+n_family_member[family.idx]),"affect"]
+    family_mean_affect[[family.idx]] <- mean(affect)
+    if(within_center==T) {
+      affect <- affect - mean(affect)
+    } else {affect <- affect - affect_all_mean} #substract sample mean within the family
+    #centering within families
+    # affect <- affect - mean(affect)
+    tran_vec <- data$tran_vec[(current_row+1):(current_row+n_family_member[family.idx]),]
+    family_strct <- data$data_family[(current_row+1):(current_row+n_family_member[family.idx]),1:6]
+    person <- c(0,family_strct[,2]) #adding 0 to check if the chromosome if from missing founder
+    
+    #define who is a founder
+    founder <- rep(0, length=n_family_member[family.idx])
+    for(i in 1:n_family_member[family.idx]) {
+      founder[i] <- ifelse((family_strct$father[i]==0 & family_strct$mother[i]==0), 1,  #full founder
+                           ifelse(!(family_strct$father[i] %in% person), 0.5, #half founder from father
+                                   ifelse(!(family_strct$mother[i] %in% person), -0.5, 0))) #half founder from mother
+    }
+    founder_idx <- which(founder!=0)
+    n_founder <- sum(abs(founder))
+    carrier <- as.vector(unlist(sapply(founder_idx, function(y){
+      if(founder[y]==1) {
+        c(ifelse(sum(h1[y, snp2look.idx]==1)>0, tran_vec[y, "h1"], NA),
+          ifelse(sum(h2[y, snp2look.idx]==1)>0, tran_vec[y, "h2"], NA))
+      }else{
+        if(founder[y]==0.5) { #from father
+          ifelse(sum(h1[y, snp2look.idx]==1)>0, tran_vec[y, "h1"], NA)
+        }else{
+          if(founder[y]==-0.5) { #from mother
+            ifelse(sum(h2[y, snp2look.idx]==1)>0, tran_vec[y, "h2"], NA)
+          }
+         }
+       }  
+    })))
+#     print(carrier)
+    
+#     carrier <- c( #indicator of which haplotypes is carrier
+#       ifelse(sum(h1[1, snp2look.idx]==1)>0, tran_vec[1, "h1"], NA) #check first founder's h1
+#       ,ifelse(sum(h2[1, snp2look.idx]==1)>0, tran_vec[1, "h2"], NA) #check first founder's h2
+#       ,ifelse(sum(h1[2, snp2look.idx]==1)>0, tran_vec[2, "h1"], NA) #check second founder's h1
+#       ,ifelse(sum(h2[2, snp2look.idx]==1)>0, tran_vec[2, "h2"], NA) #check second founder's h2
+#     )
+    n_carrier_family[family.idx] <- n_carrier <- sum(!is.na(carrier)) #no. of carrier haplotypes
+    founder_carrier <- carrier[!is.na(carrier)]
+    if(nofounderphenotype==F) {
+      start.idx <- 1:n_family_member[family.idx]
+    } else {start.idx <- which(founder==0)} 
+    criteria <- !(n_carrier==(2*n_founder) | n_carrier==0)
+
+    if(criteria) { #skip families with 0 or 4 carrier haplotypes in founders or no carrier in children for conditonal test
+      #calculate expectation for the family
+      family_expectation_list <- list()
+      for(i in start.idx) {
+        #print(c(sum(tran_vec[current_row+i, c("h1","h2")] %in% carrier),(affect[current_row+i]-1)))
+        g <- sum(tran_vec[i, c("h1","h2")] %in% founder_carrier)
+        g_exp <- expectation(tran_vec[i,], n_founder, founder_carrier)
+        family_expectation_list[[i]] <- affect[i]*(g-g_exp)
+      }
+      
+      #calculate variance
+      family_var <- 0
+      for(i in 1:length(start.idx)) {
+        i_idx <- start.idx[i]
+        for(j in i:length(start.idx)) {
+          # print(c(i,j,family_var))
+          j_idx <- start.idx[j]
+          family_var <- family_var + ifelse(i_idx==j_idx, 1, 2)*affect[i_idx]*affect[j_idx]*var_cov(tran_vec[i_idx,], tran_vec[j_idx,], n_founder, founder_carrier)
+        }
+      }
+      
+      test.stat[[family.idx]] <- c(numerator=sum(do.call(rbind, family_expectation_list)), 
+        denominator=family_var, n_carrier=n_carrier, family.idx=family.idx)
+    }
+  }
+  
+  test.stat <- data.frame(do.call(rbind, test.stat))
+  carrier.family.idx <- test.stat$family.idx
+  
+  se <- sqrt(sum(test.stat$denominator))
+  #e_avg <- mean(e) #overall expectation
+  #sum then standardize
+  final.test.stat <- sum(test.stat$numerator)/se
+  #standardize first then sum
+  # final.test.stat <- sum((test.stat$observed - test.stat$mean)/sqrt(v))/sqrt(length(v))
+  
+  #c(t, n_test.data)#T and number of informative families
+  p.value <- 2*pnorm(abs(final.test.stat), lower=F) #p-value
+
+   if(lm.test==T) { #combine between and within family information
+    #lm test on all founders and child in the family with non-carrier founder
+# 		lm.idx <- which((data$data_family$family %in% carrier.family.idx & data$data_family$father==0 & data$data_family$mother==0) |
+# 												 	(!data$data_family$family %in% carrier.family.idx))
+#   	data.cc.diploid <- hap2dip(data=list(data_family=data$data_family[lm.idx, ]), risk.variant.id=risk.variant.id, save.file=F)
+# 	  result.pedgene <- pedgene(ped=data.cc.diploid$ped, geno=data.cc.diploid$geno)
+#   	p.value.between <- result.pedgene$pgdf$pval.burden
+#   	
+# #   	#SKAT with all founders only
+  	lm.idx <- which(data$data_family$father==0 & data$data_family$mother==0)
+
+  	h1 <- data$data_family[lm.idx,7:(6+n_snp)]
+    h2 <- data$data_family[lm.idx,-c(1:(6+n_snp))]
+
+    g <- apply(h1, 1, function(x) sum(x[snp2look.idx]==1)>0) +
+    apply(h2, 1, function(x) sum(x[snp2look.idx]==1)>0)
+    g_star <- g - (mean(g))
+    y <- data$data_family[lm.idx,"affect"]
+    y <- y - mean(y) #substract lm samples mean
+    p <- mean(g)/2
+
+    if(lm.offspring==F) { #doesnot include offspring from non-informative families
+      se_comb <- sqrt(se^2 + sum(y^2*(2*p*(1-p))))
+      final.test.stat.comb <- (sum(test.stat$numerator) + sum(y*g_star))/se_comb
+      p.value.comb <- 2*pnorm(abs(final.test.stat.comb), lower=F)
+
+      return(list(final.test.stat.comb=final.test.stat.comb, se_comb=se_comb, p.value.comb=p.value.comb,
+                  n_info_family=length(test.stat$n_carrier), info_family=test.stat$family.idx))
+    }
+    
+    #between family information using all members from non-informative family
+  	lm.idx <- which((data$data_family$family %in% carrier.family.idx & data$data_family$father==0 & data$data_family$mother==0) |
+												(!data$data_family$family %in% carrier.family.idx))
+    data.lm <- data
+    data.lm$data_family <- data.lm$data_family[lm.idx, ]
+    data.lm$tran_vec <- data.lm$tran_vec[lm.idx,]
+    n_family_member <- table(data.lm$data_family$family)
+    g_exp <- 2*p
+    var_cov_lm <- function(tran_vec_1, tran_vec_2) {
+      ibd <- sum(tran_vec_1 %in% tran_vec_2)
+      result <- switch(ibd,
+             "0" = 0,
+             "1" = 0.5*2*p*(1-p),
+             "2" = 2*p*(1-p))  
+      result
+    }
+  	
+    test.stat.lm <- sapply(1:n_family, function(x) {
+      family.idx=x 
+  #     print(family.idx)
+      current_row=sum(n_family_member[1:family.idx]) - n_family_member[family.idx]
+      h1 <- data.lm$data_family[(current_row+1):(current_row+n_family_member[family.idx]),7:(6+n_snp)]
+      h2 <- data.lm$data_family[(current_row+1):(current_row+n_family_member[family.idx]),-c(1:(6+n_snp))]
+      #adjust here for more founders
+      affect <- data.lm$data_family[(current_row+1):(current_row+n_family_member[family.idx]),"affect"]
+      #centering within families
+      # affect <- affect - mean(affect)
+      tran_vec <- data.lm$tran_vec[(current_row+1):(current_row+n_family_member[family.idx]),]
+      family_strct <- data.lm$data_family[(current_row+1):(current_row+n_family_member[family.idx]),1:6]
+      person <- c(0,family_strct[,2]) #adding 0 to check if the chromosome if from missing founder
+      
+      #if informative families
+      if(family.idx %in% carrier.family.idx) {
+        g <- apply(h1, 1, function(x) sum(x[snp2look.idx]==1)>0) +
+        apply(h2, 1, function(x) sum(x[snp2look.idx]==1)>0)
+        g_star <- g - g_exp 
+        y <- affect
+        # y <- affect - mean(affect)
+        result <- c(numerator=sum(y*g_star), 
+          denominator=sum(y^2*(2*p*(1-p))))
+      }
+      
+      #if non-informative family
+      if(!family.idx %in% carrier.family.idx) {
+        
+        # #calculate variance
+        # family_var <- 0
+        # for(i in 1:n_family_member[family.idx]) {
+        #   i_idx <- i
+        #   for(j in i:n_family_member[family.idx]) {
+        #     # print(c(i,j,family_var))
+        #     j_idx <- j
+        #     family_var <- family_var + ifelse(i_idx==j_idx, 1, 2)*affect[i_idx]*affect[j_idx]*var_cov_lm(tran_vec[i_idx,], tran_vec[j_idx,])
+        #   }
+        # }
+        
+        y <- affect - mean(affect)
+        result <- c(numerator=sum(y*-g_exp), 
+          denominator=y^2*2*p*(1-p))
+      }
+      list(result)
+    })  
+    
+    test.stat.lm <- data.frame(do.call(rbind, test.stat.lm))
+    
+    se_comb <- sqrt(se^2 + sum(test.stat.lm$denominator))
+    final.test.stat.comb <- (sum(test.stat$numerator) + sum(test.stat.lm$numerator))/se_comb
+    p.value.comb <- 2*pnorm(abs(final.test.stat.comb), lower=F)
+  	
+    return(list(final.test.stat.comb=final.test.stat.comb, se_comb=se_comb, p.value.comb=p.value.comb,
+                n_info_family=length(test.stat$n_carrier), info_family=test.stat$family.idx))
+  }
+
+  list(final.test.stat=final.test.stat, se=se, p.value=p.value, n_info_family=length(test.stat$n_carrier), info_family=test.stat$family.idx)
+}
+# family.test()
+
+
 
 ##rank_based family test trap
 family.rank.test <- function(data=family_generated, f=risk.variant.id, nofounderphenotype=F) {
@@ -562,18 +833,12 @@ family.rank.test.all <- function(data=family_generated, f=risk.variant.id, nofou
         carrier <- LETTERS[carrier_list[[family.idx]]]
  
         #datafame of carrier status and trait
-        IBD_haplotype_observed = list()
-      	for(i in start.idx:n_family_member[family.idx]) {
-      		#print(c(sum(tran_vec[current_row+i, c("h1","h2")] %in% carrier),(affect[current_row+i]-1)))
-      		IBD_haplotype_observed[[i]] <- data.frame(carrier=(tran_vec[i, c("h1","h2")] %in% carrier), affect=affect[i]) 
-      	}
-      	observed <- do.call(rbind, IBD_haplotype_observed)
-      	
+        observed <- summary.stat(tran_vec, carrier, affect)
         stat_list[[family.idx]] <- observed
       }
     }
-    stats <- do.call(rbind, stat_list)
-    rank_sum(stats)$U_std
+    stats <- mean(do.call(rbind, stat_list))
+    stats
   }
   
   #randomize carrier list
@@ -600,6 +865,8 @@ family.rank.test.all <- function(data=family_generated, f=risk.variant.id, nofou
   carrier_list <- list()
   stat_list_between <- list()
   n_founder_list <- vector("integer", n_family)
+  S_list <- list()
+  IBD_list <- list()
   for(x in 1:n_family) {
     family.idx=x 
 #     print(family.idx)
@@ -611,6 +878,8 @@ family.rank.test.all <- function(data=family_generated, f=risk.variant.id, nofou
     tran_vec <- data$tran_vec[(current_row+1):(current_row+n_family_member[family.idx]),]
     family_strct <- data$data_family[(current_row+1):(current_row+n_family_member[family.idx]),1:6]
     person <- c(0,family_strct[,2]) #adding 0 to check if the chromosome if from missing founder
+    
+    IBD_list[[family.idx]] <- sum(tran_vec[3, c("h1","h2")] %in% tran_vec[4, c("h1","h2")])
     
     #define who is a founder
     founder <- rep(0, length=n_family_member[family.idx])
@@ -641,15 +910,18 @@ family.rank.test.all <- function(data=family_generated, f=risk.variant.id, nofou
     start.idx <- ifelse(nofounderphenotype==F, 1, 3)
     carrier <- LETTERS[carrier_list[[family.idx]]] #convert number to letter 
 
+    #test
+    founder <- t(combn(LETTERS[1:(2*2)], 1))
+    S <- apply(founder, 1, function(x) {
+			summary.stat(tran_vec, x, affect)
+    })
+    S_list[[family.idx]] <- S
+    
     ##betwee-family
     #datafame of carrier status and trait
-    IBD_haplotype_observed = list()
-  	for(i in start.idx:n_family_member[family.idx]) {
-  		#print(c(sum(tran_vec[current_row+i, c("h1","h2")] %in% carrier),(affect[current_row+i]-1)))
-  		IBD_haplotype_observed[[i]] <- data.frame(carrier=(tran_vec[i, c("h1","h2")] %in% carrier), affect=affect[i]) 
-  	}
-  	stat_list_between[[family.idx]] <- do.call(rbind, IBD_haplotype_observed)
-    
+    observed <- summary.stat(tran_vec, carrier, affect)
+    stat_list_between[[family.idx]] <- observed
+
     ##within-family
     n_carrier <- length(carrier) #no. of carrier haplotypes
     criteria <- !(n_carrier==(2*n_founder) | n_carrier==0)
@@ -670,30 +942,28 @@ family.rank.test.all <- function(data=family_generated, f=risk.variant.id, nofou
   } 
   
   ##between
-  stat_temp <- do.call(rbind, stat_list_between)
-  test_stat_between <- rank_sum(stat_temp)$U_std
+  stat_temp <- stat_list_between[!sapply(stat_list_between, is.na)]
+  test_stat_between <- mean(unlist(stat_temp))
   
   #permutation test
-  # null.dist_between <- replicate(100, {
+  # null.dist_between <- replicate(1000, {
   # 	new_carrier_list <- random_carrier()
   #   stat_between(new_carrier_list)
   # })
-  # p.value.between <- mean(min(test.stat, 1-test.stat) >= null.dist_between) +
-  # 	mean(max(test.stat, 1-test.stat) <= null.dist_between)
-  # 
-  # list(test_stat_between=test_stat_between, p.value.between=p.value.between)
-  # 
+  # p.value.between <- mean(min(test_stat_between, 1-test_stat_between) >= null.dist_between) +
+  # 	mean(max(test_stat_between, 1-test_stat_between) <= null.dist_between)
+
   ##within
   T.comb <- T_list[!sapply(T_list, is.null)]
   T.comb <- lapply(T.comb, function(x) x[!is.na(x)])
   test.stat.table <- data.frame(do.call(rbind, stat_list_within))
   n_info_family <- length(test.stat.table$family.idx)
   
-  test_stat_within <- sum(test.stat.table$observed)
-  sum_min_S <- sum(test.stat.table$min_S)
-  sum_max_S <- sum(test.stat.table$max_S)
-  # null.dist_within <- replicate(100000, {
-  # 	sum(sapply(T.comb, function(x) sample(x,1)))
+  test_stat_within <- mean(test.stat.table$observed)
+  sum_min_S <- mean(test.stat.table$min_S)
+  sum_max_S <- mean(test.stat.table$max_S)
+  # null.dist_within <- replicate(1000, {
+  # 	mean(sapply(T.comb, function(x) sample(x,1)))
   # })
   # p.value_within <- mean(min(test_stat_within, sum_max_S-test_stat_within+sum_min_S) >= null.dist_within) +
   # 	mean(max(test_stat_within, sum_max_S-test_stat_within+sum_min_S) <= null.dist_within)
@@ -710,9 +980,106 @@ family.rank.test.all <- function(data=family_generated, f=risk.variant.id, nofou
   # 
   # list(test_stat_within=test_stat_within, p.value=p.value, test_stat_within.rank=test_stat_within.rank, p.value.rank=p.value.rank, n_info_family=n_info_family, info_family=test.stat.table$family.idx)
   
-  list(test_stat_between, test_stat_within/n_info_family, test_stat_within.rank/n_info_family)
+  
+  #statistic for IBD status
+  idx <- test.stat.table$family.idx
+  result <- unlist(IBD_list)
+  IBD_info <- mean(result[idx])
+  IBD_noninfo <- mean(result[-idx])
+  
+  #statistic for IBD status
+  idx <- test.stat.table$family.idx
+  result <- unlist(IBD_list)
+  IBD_info <- mean(result[idx])
+  IBD_noninfo <- mean(result[-idx])
+  
+  #statistic for sd in S
+  result <- sapply(S_list, sd)
+  S_info <- mean(result[idx])
+  S_noninfo <- mean(result[-idx])
+
+  list(test_stat_between, test_stat_within, test_stat_within.rank/n_info_family, 
+       IBD_info=IBD_info, IBD_noninfo=IBD_noninfo,
+       S_info=S_info, S_noninfo=S_noninfo)
 }
 # family.rank.test.all()
+
+##rewrite in FBAT format and use lm to test for association
+family.fbat.lm <- function(data=family_generated, f=risk.variant.id, nofounderphenotype=F) {
+  ##hypothesis testing count the number of carrier haplotypes transmitted to the offsprings
+  n_family <- max(data$data_family$family)
+  n_family_member <- table(data$data_family$family)
+  #check if founder's haplotype carries any variant's with f < 0.1
+  if(length(f)==1 & f[1] <1) { #support allele frequency or list of snps
+    snp2look.idx <-  which(snp$FREQ1 < f) # snp to look for
+  } else(snp2look.idx <-  f)
+  
+  #create carrier list and n_carrier list
+  family_data_all_list <- list()
+  for(x in 1:n_family) {
+    family.idx=x 
+#     print(family.idx)
+    current_row=sum(n_family_member[1:family.idx]) - n_family_member[family.idx]
+    h1 <- data$data_family[(current_row+1):(current_row+n_family_member[family.idx]),7:(6+n_snp)]
+    h2 <- data$data_family[(current_row+1):(current_row+n_family_member[family.idx]),-c(1:(6+n_snp))]
+    #adjust here for more founders
+    affect <- data$data_family[(current_row+1):(current_row+n_family_member[family.idx]),"affect"]
+    tran_vec <- data$tran_vec[(current_row+1):(current_row+n_family_member[family.idx]),]
+    family_strct <- data$data_family[(current_row+1):(current_row+n_family_member[family.idx]),1:6]
+    person <- c(0,family_strct[,2]) #adding 0 to check if the chromosome if from missing founder
+    
+    #define who is a founder
+    founder <- rep(0, length=n_family_member[family.idx])
+    for(i in 1:n_family_member[family.idx]) {
+      founder[i] <- ifelse((family_strct$father[i]==0 & family_strct$mother[i]==0), 1,  #full founder
+                           ifelse(!(family_strct$father[i] %in% person), 0.5, #half founder from father
+                                   ifelse(!(family_strct$mother[i] %in% person), -0.5, 0))) #half founder from mother
+    }
+    founder_idx <- which(founder!=0)
+    n_founder <- sum(abs(founder))
+    carrier <- as.vector(unlist(sapply(founder_idx, function(y){
+      if(founder[y]==1) {
+        c(ifelse(sum(h1[y, snp2look.idx]==1)>0, tran_vec[y, "h1"], NA),
+          ifelse(sum(h2[y, snp2look.idx]==1)>0, tran_vec[y, "h1"], NA))
+      }else{
+        if(founder[y]==0.5) { #from father
+          ifelse(sum(h1[y, snp2look.idx]==1)>0, tran_vec[y, "h1"], NA)
+        }else{
+          if(founder[y]==-0.5) { #from mother
+            ifelse(sum(h2[y, snp2look.idx]==1)>0, tran_vec[y, "h2"], NA)
+          }
+         }
+       }  
+    })))
+    
+    start.idx <- ifelse(nofounderphenotype==F, 1, 3)
+    
+    ##convert to fbat format
+    n_carrier <- sum(!is.na(carrier)) #no. of carrier haplotypes
+    criteria <- !(n_carrier==(2*n_founder) | n_carrier==0)
+
+    if(criteria) { #skip families with 0 or 4 carrier haplotypes in founders or no carrier in children for conditonal test
+      
+      family_data_list <- list()
+      for(i in start.idx:n_family_member[family.idx]) {
+        g <- sum(tran_vec[i, c("h1","h2")] %in% carrier)
+        #calculate expectation and variance
+          founder_carrier <- t(combn(LETTERS[1:(2*n_founder)], n_carrier))
+          S <- apply(founder_carrier, 1, function(x) {
+				    sum(tran_vec[i, c("h1", "h2")] %in% x)
+          })
+        g_exp <- mean(S)
+  		  family_data_list[[i]] <- data.frame(y = affect[i], g=g, g_exp=g_exp, g_star=g-g_exp) 
+      }
+      family_data_all_list[[x]] <- cbind(do.call(rbind,family_data_list), family.idx=family.idx)
+    }
+  } 
+  
+  family_data_all <- do.call(rbind, family_data_all_list)
+  p.value <- summary(lm(g_star~y, data=family_data_all))$coefficients[2,4]
+  
+  list(p.value=p.value)
+}
 
 
 #exact p-value calculation

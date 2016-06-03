@@ -8,8 +8,13 @@ result <- replicate(20, {
   trap_within_center <- family.score.test(data=family_generated, f=risk.variant.id, summary.stat="5", lm.test=F, within_center = T)$p.value
   trap_center_comb <- family.score.test(data=family_generated, f=risk.variant.id, summary.stat="5", lm.test=T)$p.value.comb
   trap_within_center_comb <- family.score.test(data=family_generated, f=risk.variant.id, summary.stat="5", lm.test=T, within_center = T)$p.value.comb
-  pedgene <- pedgene(ped=family_generated_diploid$ped, geno=family_generated_diploid$geno)$pgdf$pval.burden
-  print(c(trap, trap_center, trap_within_center, trap_center_comb, trap_within_center_comb, pedgene))
-  c(trap, trap_center, trap_within_center, trap_center_comb, trap_within_center_comb, pedgene)
+  # trap_center_comb_offspring <- family.score.test(data=family_generated, f=risk.variant.id, summary.stat="5", lm.test=T, lm.offspring = T)$p.value.comb
+  # trap_within_center_comb_offspring <- family.score.test(data=family_generated, f=risk.variant.id, summary.stat="5", lm.test=T, lm.offspring = T, within_center = T)$p.value.comb
+  pedgene <- pedgene(ped=family_generated_diploid$ped, geno=family_generated_diploid$geno, weights.beta = c(1,1))$pgdf$pval.burden
+  burden.test <- family.burden.test(data=family_generated, f=risk.variant.id, summary.stat="5")$p.value.comb
+  
+  var_name <- expression(c(trap, trap_center, trap_within_center, trap_center_comb, trap_within_center_comb, pedgene, burden.test))
+  print(eval(var_name))
+  eval(var_name)
 })
 result

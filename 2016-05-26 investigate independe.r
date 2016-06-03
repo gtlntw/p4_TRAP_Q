@@ -85,9 +85,9 @@ for(i in 1:n_rep) {
   result.trap_within_center <- family.score.test(data=family_generated, f=risk.variant.id, summary.stat="5", lm.test=F, within_center = T)$p.value
   result.trap_center_comb <- family.score.test(data=family_generated, f=risk.variant.id, summary.stat="5", lm.test=T)$p.value.comb
   result.trap_within_center_comb <- family.score.test(data=family_generated, f=risk.variant.id, summary.stat="5", lm.test=T, within_center = T)$p.value.comb
-  result.trap_center_comb_offspring <- family.score.test(data=family_generated, f=risk.variant.id, summary.stat="5", lm.test=T, lm.offspring = T)$p.value.comb
-  result.trap_within_center_comb_offspring <- family.score.test(data=family_generated, f=risk.variant.id, summary.stat="5", lm.test=T, lm.offspring = T, within_center = T)$p.value.comb
-  
+  # result.trap_center_comb_offspring <- family.score.test(data=family_generated, f=risk.variant.id, summary.stat="5", lm.test=T, lm.offspring = T)$p.value.comb
+  # result.trap_within_center_comb_offspring <- family.score.test(data=family_generated, f=risk.variant.id, summary.stat="5", lm.test=T, lm.offspring = T, within_center = T)$p.value.comb
+  result.burden.test <- family.burden.test(data=family_generated, f=risk.variant.id, summary.stat="5")$p.value.comb
   sim.fail <- tryCatch({  
     result.pedgene <- pedgene(ped=family_generated_diploid$ped, geno=family_generated_diploid$geno, weights.beta = c(1,1))
     result.pedgene.vc <- result.pedgene$pgdf$pval.kernel
@@ -115,7 +115,8 @@ for(i in 1:n_rep) {
     #only report p.value
     sim_result[[i]] <- data.frame(result.trap, result.trap_center, result.trap_within_center, 
                                   result.trap_center_comb, result.trap_within_center_comb,
-                                  result.trap_center_comb_offspring, result.trap_within_center_comb_offspring,
+                                  # result.trap_center_comb_offspring, result.trap_within_center_comb_offspring,
+                                  result.burden.test,
                                   result.pedgene.burden, result.pedgene.vc,
                                   result.fbskat.vc, result.fbskat.burden,
                                   result.pop) 
@@ -142,8 +143,8 @@ write.csv(result.df, paste("res_",seed,"_",r,"_",f,"_",n_family,".csv",sep=""), 
 ###########################################
 ##initialize
 opts['seed']=1000 #starting seed number
-opts['n_rep_total']=1000 #total number of replications
-opts['n_rep']=100 #number of replications in each parallele job
+opts['n_rep_total']=2000 #total number of replications
+opts['n_rep']=50 #number of replications in each parallele job
 opts['n_ite']=opts['n_rep_total']/opts['n_rep'] #number of parallele jobs
 opts['n_family']=1000 #number of family
 
@@ -204,7 +205,48 @@ for i in numpy.arange(0,1.1,0.1):
 		opts['seed'] += 1			
 		
 
-opts['f'] = 0.20 #common
+# opts['f'] = 0.20 #common
+
+# opts['dis_cutoff']='NA'
+# opts['exact_affected'] = "F" #exact_affected
+# for i in numpy.arange(0,1.1,0.1):
+# 	for j in range(opts['n_ite']):
+# 		opts['r'] = i
+# 		tgt = 'callmainSim_{seed}.OK'.format(**opts)
+# 		inputFilesOK.append(tgt)
+# 		dep = ''
+# 		cmd = ['R --vanilla --args seed {seed} n_rep {n_rep} r {r} f {f} n_family {n_family} trait_mean {trait_mean} dis_cutoff {dis_cutoff} family_strct {family_strct} exact_affected {exact_affected} < mainSim.R > mainSim{seed}_{n_rep}_{r}_{n_family}_{dis_cutoff}_{f}_{family_strct}.Rout 2>&1'.format(**opts)]
+# 		makeJob(opts['launchMethod'], tgt, dep, cmd)
+# 		opts['seed'] += 1	
+
+# opts['dis_cutoff']='1.28' #prevalence=0.1
+# opts['exact_affected'] = "F" #exact_affected
+# for i in numpy.arange(0,1.1,0.1):
+# 	for j in range(opts['n_ite']):
+# 		opts['r'] = i
+# 		tgt = 'callmainSim_{seed}.OK'.format(**opts)
+# 		inputFilesOK.append(tgt)
+# 		dep = ''
+# 		cmd = ['R --vanilla --args seed {seed} n_rep {n_rep} r {r} f {f} n_family {n_family} trait_mean {trait_mean} dis_cutoff {dis_cutoff} family_strct {family_strct} exact_affected {exact_affected} < mainSim.R > mainSim{seed}_{n_rep}_{r}_{n_family}_{dis_cutoff}_{f}_{family_strct}.Rout 2>&1'.format(**opts)]
+# 		makeJob(opts['launchMethod'], tgt, dep, cmd)
+# 		opts['seed'] += 1	
+		
+# opts['dis_cutoff']='2.326' #prevalence=0.01
+# opts['exact_affected'] = "F" #exact_affected
+# for i in numpy.arange(0,1.1,0.1):
+# 	for j in range(opts['n_ite']):
+# 		opts['r'] = i
+# 		tgt = 'callmainSim_{seed}.OK'.format(**opts)
+# 		inputFilesOK.append(tgt)
+# 		dep = ''
+# 		cmd = ['R --vanilla --args seed {seed} n_rep {n_rep} r {r} f {f} n_family {n_family} trait_mean {trait_mean} dis_cutoff {dis_cutoff} family_strct {family_strct} exact_affected {exact_affected} < mainSim.R > mainSim{seed}_{n_rep}_{r}_{n_family}_{dis_cutoff}_{f}_{family_strct}.Rout 2>&1'.format(**opts)]
+# 		makeJob(opts['launchMethod'], tgt, dep, cmd)
+# 		opts['seed'] += 1				
+
+
+opts['family_strct'] = '\"3g.3a.4u\"' #family structure	
+opts["param"] = "{time} {exclude} --mem=4096".format(**opts) #indicate this is a quick job
+opts['f'] = 0.01 #rare
 
 opts['dis_cutoff']='NA'
 opts['exact_affected'] = "F" #exact_affected
@@ -240,49 +282,8 @@ for i in numpy.arange(0,1.1,0.1):
 		dep = ''
 		cmd = ['R --vanilla --args seed {seed} n_rep {n_rep} r {r} f {f} n_family {n_family} trait_mean {trait_mean} dis_cutoff {dis_cutoff} family_strct {family_strct} exact_affected {exact_affected} < mainSim.R > mainSim{seed}_{n_rep}_{r}_{n_family}_{dis_cutoff}_{f}_{family_strct}.Rout 2>&1'.format(**opts)]
 		makeJob(opts['launchMethod'], tgt, dep, cmd)
-		opts['seed'] += 1				
-
-
-# opts['family_strct'] = '\"3g.3a.4u\"' #family structure
-# opts["param"] = "{time} {exclude} --mem=4096".format(**opts) #indicate this is a quick job
-# opts['f'] = 0.01 #rare
-
-# opts['dis_cutoff']='NA'
-# opts['exact_affected'] = "F" #exact_affected
-# for i in numpy.arange(0,1.1,0.1):
-# 	for j in range(opts['n_ite']):
-# 		opts['r'] = i
-# 		tgt = 'callmainSim_{seed}.OK'.format(**opts)
-# 		inputFilesOK.append(tgt)
-# 		dep = ''
-# 		cmd = ['R --vanilla --args seed {seed} n_rep {n_rep} r {r} f {f} n_family {n_family} trait_mean {trait_mean} dis_cutoff {dis_cutoff} family_strct {family_strct} exact_affected {exact_affected} < mainSim.R > mainSim{seed}_{n_rep}_{r}_{n_family}_{dis_cutoff}_{f}_{family_strct}.Rout 2>&1'.format(**opts)]
-# 		makeJob(opts['launchMethod'], tgt, dep, cmd)
-# 		opts['seed'] += 1
-
-# opts['dis_cutoff']='1.28' #prevalence=0.1
-# opts['exact_affected'] = "F" #exact_affected
-# for i in numpy.arange(0,1.1,0.1):
-# 	for j in range(opts['n_ite']):
-# 		opts['r'] = i
-# 		tgt = 'callmainSim_{seed}.OK'.format(**opts)
-# 		inputFilesOK.append(tgt)
-# 		dep = ''
-# 		cmd = ['R --vanilla --args seed {seed} n_rep {n_rep} r {r} f {f} n_family {n_family} trait_mean {trait_mean} dis_cutoff {dis_cutoff} family_strct {family_strct} exact_affected {exact_affected} < mainSim.R > mainSim{seed}_{n_rep}_{r}_{n_family}_{dis_cutoff}_{f}_{family_strct}.Rout 2>&1'.format(**opts)]
-# 		makeJob(opts['launchMethod'], tgt, dep, cmd)
-# 		opts['seed'] += 1
-
-# opts['dis_cutoff']='2.326' #prevalence=0.01
-# opts['exact_affected'] = "F" #exact_affected
-# for i in numpy.arange(0,1.1,0.1):
-# 	for j in range(opts['n_ite']):
-# 		opts['r'] = i
-# 		tgt = 'callmainSim_{seed}.OK'.format(**opts)
-# 		inputFilesOK.append(tgt)
-# 		dep = ''
-# 		cmd = ['R --vanilla --args seed {seed} n_rep {n_rep} r {r} f {f} n_family {n_family} trait_mean {trait_mean} dis_cutoff {dis_cutoff} family_strct {family_strct} exact_affected {exact_affected} < mainSim.R > mainSim{seed}_{n_rep}_{r}_{n_family}_{dis_cutoff}_{f}_{family_strct}.Rout 2>&1'.format(**opts)]
-# 		makeJob(opts['launchMethod'], tgt, dep, cmd)
-# 		opts['seed'] += 1
-
+		opts['seed'] += 1			
+		
 
 # opts['f'] = 0.20 #common
 
@@ -296,7 +297,7 @@ for i in numpy.arange(0,1.1,0.1):
 # 		dep = ''
 # 		cmd = ['R --vanilla --args seed {seed} n_rep {n_rep} r {r} f {f} n_family {n_family} trait_mean {trait_mean} dis_cutoff {dis_cutoff} family_strct {family_strct} exact_affected {exact_affected} < mainSim.R > mainSim{seed}_{n_rep}_{r}_{n_family}_{dis_cutoff}_{f}_{family_strct}.Rout 2>&1'.format(**opts)]
 # 		makeJob(opts['launchMethod'], tgt, dep, cmd)
-# 		opts['seed'] += 1
+# 		opts['seed'] += 1	
 
 # opts['dis_cutoff']='1.28' #prevalence=0.1
 # opts['exact_affected'] = "F" #exact_affected
@@ -308,8 +309,8 @@ for i in numpy.arange(0,1.1,0.1):
 # 		dep = ''
 # 		cmd = ['R --vanilla --args seed {seed} n_rep {n_rep} r {r} f {f} n_family {n_family} trait_mean {trait_mean} dis_cutoff {dis_cutoff} family_strct {family_strct} exact_affected {exact_affected} < mainSim.R > mainSim{seed}_{n_rep}_{r}_{n_family}_{dis_cutoff}_{f}_{family_strct}.Rout 2>&1'.format(**opts)]
 # 		makeJob(opts['launchMethod'], tgt, dep, cmd)
-# 		opts['seed'] += 1
-
+# 		opts['seed'] += 1	
+		
 # opts['dis_cutoff']='2.326' #prevalence=0.01
 # opts['exact_affected'] = "F" #exact_affected
 # for i in numpy.arange(0,1.1,0.1):
@@ -320,8 +321,8 @@ for i in numpy.arange(0,1.1,0.1):
 # 		dep = ''
 # 		cmd = ['R --vanilla --args seed {seed} n_rep {n_rep} r {r} f {f} n_family {n_family} trait_mean {trait_mean} dis_cutoff {dis_cutoff} family_strct {family_strct} exact_affected {exact_affected} < mainSim.R > mainSim{seed}_{n_rep}_{r}_{n_family}_{dis_cutoff}_{f}_{family_strct}.Rout 2>&1'.format(**opts)]
 # 		makeJob(opts['launchMethod'], tgt, dep, cmd)
-# 		opts['seed'] += 1
-
+# 		opts['seed'] += 1				
+				
 ######################
 #1.2. combine the result
 ######################
@@ -353,7 +354,7 @@ cbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2",
 cbbPalette <- c("#000000", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
 #check power using true, imputed founder carrier, minimum offspring carrier
 #three versions -- command and rare and super rare #2 for common, 7 for rare, 39 for super rare
-result <- read.csv("2016-04-22 new_centered_combined_all.csv", header=T)
+result <- read.csv("2016-05-26 investigate independe.csv", header=T)
 result <- select(result, -result.trap)
 result <- result %>% gather(key="method", value="p.value", -c(1:10))
 result.plot <- result %>% group_by(family_strct, trait_mean, dis_cutoff,f, risk.haplo.f, r, method) %>% 
@@ -366,81 +367,50 @@ result.plot$method <- factor(result.plot$method)
 # levels(result.plot$method) <- c("pedgene.burden", "pop", "trap.haplo", "trap.ind", "trap_lm",
 #         "trap_lm.lm.only", "trap_lm.trap.only", "trap_with_all_founders", "trap_only.founder.SKAT")
 
-
-
-#all f=0.01
-pd <- position_dodge(0.0)
-filter(result.plot, !grepl("vc|offspring|pop|trap_center", method), f==0.01) %>% ggplot(aes(x=r, y=power, ymax=max(power), group=method, col=method)) +
+#all f=0.01 and f=0.20 type I error
+pd <- position_dodge(0.1)
+filter(result.plot, !grepl("vc|offspring|pop|trap_center|pedgene", method), r==0) %>% ggplot(aes(x=r, y=power, ymax=max(power), group=method, col=method)) +
   #   geom_point(size=3, alpha=1) +
   facet_grid(dis_cutoff~trait_mean*f*family_strct, scale="free_x", labeller = label_both) +
+  geom_hline(yintercept = 0.05) +
   geom_line(size=1, alpha=0.8, position=pd) +
-  geom_point(size=1.5, aes(shape=method), position=pd) +
+  geom_point(size=2, aes(shape=method), position=pd) +
+#   ggtitle("f=0.202, consider effect size of risk haplotypes, TRAP") +
+#   ggtitle("f=0.0178, consider effect size of risk haplotypes, TRAP") +
+#   ggtitle("f=0.0039, consider effect size of risk haplotypes, TRAP") +
+  labs(x="relative risk r") +
+  scale_y_continuous(limits=c(0,0.1)) +
+  # scale_x_continuous(limits=c(0,1)) +
+  theme_gray(base_size = 20) +
+  theme(legend.position="bottom",
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank()) +
+  scale_x_continuous(   breaks = 0,
+                        labels = 0) +
+  scale_color_brewer(palette = "Dark2") #+
+  # scale_linetype_manual(values=c("solid", "solid", "dashed", "solid", "dashed", "dashed"))
+
+  
+
+#all f=0.01 and f=0.20 power
+pd <- position_dodge(0.0)
+filter(result.plot, !grepl("vc|offspring|pop|trap_center|pedgene", method)) %>% ggplot(aes(x=r, y=power, ymax=max(power), group=method, col=method)) +
+  #   geom_point(size=3, alpha=1) +
+  facet_grid(dis_cutoff~trait_mean*f*family_strct, scale="free_x", labeller = label_both) +
+  geom_hline(yintercept = 0.05) +
+  geom_line(size=1, alpha=0.8, position=pd) +
+  geom_point(size=2, aes(shape=method), position=pd) +
 #   ggtitle("f=0.202, consider effect size of risk haplotypes, TRAP") +
 #   ggtitle("f=0.0178, consider effect size of risk haplotypes, TRAP") +
 #   ggtitle("f=0.0039, consider effect size of risk haplotypes, TRAP") +
   labs(x="relative risk r") +
   scale_y_continuous(limits=c(0,1)) +
-  scale_x_continuous(limits=c(0,0.7)) +
+  # scale_x_continuous(limits=c(0,1)) +
   theme_gray(base_size = 20) +
-  theme(legend.position="bottom") +
+  theme(legend.position="bottom",
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank()) +
   scale_color_brewer(palette = "Dark2") #+
   # scale_linetype_manual(values=c("solid", "solid", "dashed", "solid", "dashed", "dashed"))
-
-#all f=0.20
-pd <- position_dodge(0.0)
-filter(result.plot, !grepl("vc|offspring|pop|trap_center", method), f==0.20) %>% ggplot(aes(x=r, y=power, ymax=max(power), group=method, col=method)) +
-  #   geom_point(size=3, alpha=1) +
-  facet_grid(dis_cutoff~trait_mean*f*family_strct, scale="free_x", labeller = label_both) +
-  geom_line(size=1, alpha=0.8, position=pd) +
-  geom_point(size=1.5, aes(shape=method), position=pd) +
-#   ggtitle("f=0.202, consider effect size of risk haplotypes, TRAP") +
-#   ggtitle("f=0.0178, consider effect size of risk haplotypes, TRAP") +
-#   ggtitle("f=0.0039, consider effect size of risk haplotypes, TRAP") +
-  labs(x="relative risk r") +
-  scale_y_continuous(limits=c(0,1)) +
-  scale_x_continuous(limits=c(0,0.7)) +
-  theme_gray(base_size = 20) +
-  theme(legend.position="bottom") +
-  scale_color_brewer(palette = "Dark2") #+
-  # scale_linetype_manual(values=c("solid", "solid", "dashed", "solid", "dashed", "dashed"))
-
-
-#only TRAP without offspring
-pd <- position_dodge(0.0)
-filter(result.plot, grepl("trap|comb", method), !grepl("offspring", method)) %>% ggplot(aes(x=r, y=power, ymax=max(power), group=method, col=method)) +
-  #   geom_point(size=3, alpha=1) +
-  facet_grid(dis_cutoff~trait_mean*f*family_strct, scale="free_x", labeller = label_both) +
-  geom_line(size=1, alpha=0.8, position=pd) +
-  geom_point(size=1.5, aes(shape=method), position=pd) +
-#   ggtitle("f=0.202, consider effect size of risk haplotypes, TRAP") +
-#   ggtitle("f=0.0178, consider effect size of risk haplotypes, TRAP") +
-#   ggtitle("f=0.0039, consider effect size of risk haplotypes, TRAP") +
-  labs(x="relative risk r") +
-  scale_y_continuous(limits=c(0,1)) +
-  scale_x_continuous(limits=c(0,0.7)) +
-  theme_gray(base_size = 20) +
-  theme(legend.position="bottom") +
-  scale_color_brewer(palette = "Dark2") #+
-  # scale_linetype_manual(values=c("solid", "solid", "dashed", "solid", "dashed", "dashed"))
-
-
-
-#only TRAP compare between offspring
-pd <- position_dodge(0.0)
-filter(result.plot, grepl("trap_center_comb", method)) %>% ggplot(aes(x=r, y=power, ymax=max(power), group=method, col=method)) +
-  #   geom_point(size=3, alpha=1) +
-  facet_grid(dis_cutoff~trait_mean*f*family_strct, scale="free_x", labeller = label_both) +
-  geom_line(size=1, alpha=0.8, position=pd) +
-  geom_point(size=1.5, aes(shape=method), position=pd) +
-#   ggtitle("f=0.202, consider effect size of risk haplotypes, TRAP") +
-#   ggtitle("f=0.0178, consider effect size of risk haplotypes, TRAP") +
-#   ggtitle("f=0.0039, consider effect size of risk haplotypes, TRAP") +
-  labs(x="relative risk r") +
-  scale_y_continuous(limits=c(0,1)) +
-  scale_x_continuous(limits=c(0,0.7)) +
-  theme_gray(base_size = 20) +
-  theme(legend.position="bottom") +
-  scale_color_brewer(palette = "Dark2") #+
-  # scale_linetype_manual(values=c("solid", "solid", "dashed", "solid", "dashed", "dashed"))
-
-

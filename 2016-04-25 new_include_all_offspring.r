@@ -85,9 +85,9 @@ for(i in 1:n_rep) {
   result.trap_within_center <- family.score.test(data=family_generated, f=risk.variant.id, summary.stat="5", lm.test=F, within_center = T)$p.value
   result.trap_center_comb <- family.score.test(data=family_generated, f=risk.variant.id, summary.stat="5", lm.test=T)$p.value.comb
   result.trap_within_center_comb <- family.score.test(data=family_generated, f=risk.variant.id, summary.stat="5", lm.test=T, within_center = T)$p.value.comb
-  result.trap_center_comb_offspring <- family.score.test(data=family_generated, f=risk.variant.id, summary.stat="5", lm.test=T, lm.offspring = T)$p.value.comb
-  result.trap_within_center_comb_offspring <- family.score.test(data=family_generated, f=risk.variant.id, summary.stat="5", lm.test=T, lm.offspring = T, within_center = T)$p.value.comb
-  
+  # result.trap_center_comb_offspring <- family.score.test(data=family_generated, f=risk.variant.id, summary.stat="5", lm.test=T, lm.offspring = T)$p.value.comb
+  # result.trap_within_center_comb_offspring <- family.score.test(data=family_generated, f=risk.variant.id, summary.stat="5", lm.test=T, lm.offspring = T, within_center = T)$p.value.comb
+  result.burden.test <- family.burden.test(data=family_generated, f=risk.variant.id, summary.stat="5")$p.value.comb
   sim.fail <- tryCatch({  
     result.pedgene <- pedgene(ped=family_generated_diploid$ped, geno=family_generated_diploid$geno, weights.beta = c(1,1))
     result.pedgene.vc <- result.pedgene$pgdf$pval.kernel
@@ -115,7 +115,8 @@ for(i in 1:n_rep) {
     #only report p.value
     sim_result[[i]] <- data.frame(result.trap, result.trap_center, result.trap_within_center, 
                                   result.trap_center_comb, result.trap_within_center_comb,
-                                  result.trap_center_comb_offspring, result.trap_within_center_comb_offspring,
+                                  # result.trap_center_comb_offspring, result.trap_within_center_comb_offspring,
+                                  result.burden.test,
                                   result.pedgene.burden, result.pedgene.vc,
                                   result.fbskat.vc, result.fbskat.burden,
                                   result.pop) 
@@ -353,11 +354,11 @@ cbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2",
 cbbPalette <- c("#000000", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
 #check power using true, imputed founder carrier, minimum offspring carrier
 #three versions -- command and rare and super rare #2 for common, 7 for rare, 39 for super rare
-result <- read.csv("2016-04-22 new_centered_combined_all.csv", header=T)
+result <- read.csv("2016-04-25 new_include_all_offspring.csv", header=T)
 result <- select(result, -result.trap)
 result <- result %>% gather(key="method", value="p.value", -c(1:10))
 result.plot <- result %>% group_by(family_strct, trait_mean, dis_cutoff,f, risk.haplo.f, r, method) %>% 
-  summarise(n=n(), power=mean(p.value<0.05, na.rm=T))
+  summarise(n=n(), power=mean(p.value<2.5*10^-6, na.rm=T))
 result.plot$dis_cutoff[which(is.na(result.plot$dis_cutoff))] <- "NA"
 result.plot$dis_cutoff <- factor(result.plot$dis_cutoff, levels = c("NA", "1.28", "2.326"),
                                  labels=c("non-ascertained", "10% prevalence", "1%prevalence"))
@@ -366,11 +367,9 @@ result.plot$method <- factor(result.plot$method)
 # levels(result.plot$method) <- c("pedgene.burden", "pop", "trap.haplo", "trap.ind", "trap_lm",
 #         "trap_lm.lm.only", "trap_lm.trap.only", "trap_with_all_founders", "trap_only.founder.SKAT")
 
-
-
 #all f=0.01
 pd <- position_dodge(0.0)
-filter(result.plot, !grepl("vc|offspring|pop|trap_center", method), f==0.01) %>% ggplot(aes(x=r, y=power, ymax=max(power), group=method, col=method)) +
+filter(result.plot, !grepl("vc|offspring|pop|trap_center|pedgene", method), f==0.01) %>% ggplot(aes(x=r, y=power, ymax=max(power), group=method, col=method)) +
   #   geom_point(size=3, alpha=1) +
   facet_grid(dis_cutoff~trait_mean*f*family_strct, scale="free_x", labeller = label_both) +
   geom_line(size=1, alpha=0.8, position=pd) +
@@ -380,15 +379,19 @@ filter(result.plot, !grepl("vc|offspring|pop|trap_center", method), f==0.01) %>%
 #   ggtitle("f=0.0039, consider effect size of risk haplotypes, TRAP") +
   labs(x="relative risk r") +
   scale_y_continuous(limits=c(0,1)) +
-  scale_x_continuous(limits=c(0,0.7)) +
+  scale_x_continuous(limits=c(0,1)) +
   theme_gray(base_size = 20) +
+  theme(legend.position="right",
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank()) +
   theme(legend.position="bottom") +
   scale_color_brewer(palette = "Dark2") #+
   # scale_linetype_manual(values=c("solid", "solid", "dashed", "solid", "dashed", "dashed"))
 
 #all f=0.20
 pd <- position_dodge(0.0)
-filter(result.plot, !grepl("vc|offspring|pop|trap_center", method), f==0.20) %>% ggplot(aes(x=r, y=power, ymax=max(power), group=method, col=method)) +
+filter(result.plot, !grepl("vc|offspring|pop|trap_center|pedgene", method), f==0.20) %>% ggplot(aes(x=r, y=power, ymax=max(power), group=method, col=method)) +
   #   geom_point(size=3, alpha=1) +
   facet_grid(dis_cutoff~trait_mean*f*family_strct, scale="free_x", labeller = label_both) +
   geom_line(size=1, alpha=0.8, position=pd) +
@@ -398,8 +401,12 @@ filter(result.plot, !grepl("vc|offspring|pop|trap_center", method), f==0.20) %>%
 #   ggtitle("f=0.0039, consider effect size of risk haplotypes, TRAP") +
   labs(x="relative risk r") +
   scale_y_continuous(limits=c(0,1)) +
-  scale_x_continuous(limits=c(0,0.7)) +
+  scale_x_continuous(limits=c(0,.7)) +
   theme_gray(base_size = 20) +
+  theme(legend.position="right",
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank()) +
   theme(legend.position="bottom") +
   scale_color_brewer(palette = "Dark2") #+
   # scale_linetype_manual(values=c("solid", "solid", "dashed", "solid", "dashed", "dashed"))
@@ -443,4 +450,21 @@ filter(result.plot, grepl("trap_center_comb", method)) %>% ggplot(aes(x=r, y=pow
   scale_color_brewer(palette = "Dark2") #+
   # scale_linetype_manual(values=c("solid", "solid", "dashed", "solid", "dashed", "dashed"))
 
+#compare burden test
+pd <- position_dodge(0.0)
+filter(result.plot, grepl("burden", method)) %>% ggplot(aes(x=r, y=power, ymax=max(power), group=method, col=method)) +
+  #   geom_point(size=3, alpha=1) +
+  facet_grid(dis_cutoff~trait_mean*f*family_strct, scale="free_x", labeller = label_both) +
+  geom_line(size=1, alpha=0.8, position=pd) +
+  geom_point(size=1.5, aes(shape=method), position=pd) +
+#   ggtitle("f=0.202, consider effect size of risk haplotypes, TRAP") +
+#   ggtitle("f=0.0178, consider effect size of risk haplotypes, TRAP") +
+#   ggtitle("f=0.0039, consider effect size of risk haplotypes, TRAP") +
+  labs(x="relative risk r") +
+  scale_y_continuous(limits=c(0,1)) +
+  scale_x_continuous(limits=c(0,0.7)) +
+  theme_gray(base_size = 20) +
+  theme(legend.position="bottom") +
+  scale_color_brewer(palette = "Dark2") #+
+  # scale_linetype_manual(values=c("solid", "solid", "dashed", "solid", "dashed", "dashed"))
 
